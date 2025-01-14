@@ -1,7 +1,7 @@
 import re
 import requests
 import warnings
-from datetime import datetime,timedelta
+from datetime import datetime, timedelta
 
 import pytz
 from bs4 import BeautifulSoup
@@ -198,7 +198,11 @@ class QTickets(BaseParser):
 
 
     def _id(self, event_soup):
-        event_id = event_soup.find("a", {"id": "buy_btn2"})["data-event-id"]
+        event_url = self._url(event_soup)
+        if event_url:
+            event_id = event_url.split('/')[-1].split('-')[0]
+        else:
+            event_id = str(datetime.today()).replace(' ','_')
         return self.parser_prefix + event_id
 
     def _place_name(self, event_soup):
@@ -223,7 +227,7 @@ class QTickets(BaseParser):
             return event_card_image["src"]
 
     def _price(self, event_soup):
-        return event_soup.find("a", {"id": "buy_btn2"}).text.split('Купить от')[-1].strip()
+        return event_soup.find("a", {"id": "buy_btn"}).text.split('Купить от')[-1].strip()
 
     def _title(self, event_soup):
         return add_emoji(
