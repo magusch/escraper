@@ -132,10 +132,13 @@ class MTS(BaseParser):
 
     def _date_to(self, event_json):
         date_to = datetime.strptime(event_json["lastEventDateTime"]+'Z', self.DATETIME_STRF).astimezone(self.TIMEZONE)
-        if (date_to > self._date_from_ + timedelta(days=7)) or (date_to == self._date_from_):
-            self._date_to_ = None
-        else:
+        if (date_to < self._date_from_ + timedelta(days=7)) and (date_to != self._date_from_):
             self._date_to_ = date_to
+        elif self._date_from_:
+            self._date_to_ = self._date_from_ + timedelta(hours=3)
+        else:
+            self._date_to_ = None
+
         return self._date_to_
 
     def _date_from_to(self, event_json):

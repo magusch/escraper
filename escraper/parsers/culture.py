@@ -159,7 +159,10 @@ class Culture(BaseParser):
         return self.parser_prefix + str(event_json["_id"])
 
     def _place_name(self, event_json):
-        return event_json["places"][0]['title'].strip()
+        if event_json["places"][0]['title']:
+            return event_json["places"][0]['title'].strip()
+        else:
+            return ''
 
     def _full_text(self, event_json) -> str:
         post_text_html = event_json["text"]
