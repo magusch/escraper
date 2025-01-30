@@ -2,9 +2,6 @@ import re
 import warnings
 from datetime import datetime, timedelta
 
-import pytz
-from bs4 import BeautifulSoup
-
 from .base import BaseParser, ALL_EVENT_TAGS
 from ..emoji import add_emoji
 
@@ -13,7 +10,7 @@ class Radario(BaseParser):
     name = "radario"
     BASE_URL = "https://radario.ru/events/"
     BASE_EVENTS_API = "https://radario.ru/web-api/affiche/events"
-    DATETIME_STRF = "%Y-%m-%d"
+    DATETIME_STRF = "%Y-%m-%dT%H:%M:%S.%f%z"
     parser_prefix = "RADARIO-"
 
     AVAILABLE_CATEGORIES = [
@@ -173,11 +170,11 @@ class Radario(BaseParser):
         return event_json_data['superTagName'].strip()
 
     def _date_from(self, event_json_data):
-        self._date_from_ = datetime.strptime(event_json_data['beginDate'], '%Y-%m-%dT%H:%M:%S.%f%z')
+        self._date_from_ = datetime.strptime(event_json_data['beginDate'], self.DATETIME_STRF).astimezone(self.TIMEZONE)
         return self._date_from_
 
     def _date_to(self, event_json_data):
-        self._date_to_ = datetime.strptime(event_json_data['endDate'], '%Y-%m-%dT%H:%M:%S.%f%z')
+        self._date_to_ = datetime.strptime(event_json_data['endDate'], self.DATETIME_STRF).astimezone(self.TIMEZONE)
         return self._date_to_
 
     def _date_from_to(self, event_json_data):
