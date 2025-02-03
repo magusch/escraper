@@ -1,4 +1,4 @@
 beautifulsoup4==4.9.1 # pyup: ignore
 requests<=2.25.1, >=2.24.0 # pyup: ignore
-pytz==2021.3
-find_metro@git+https://github.com/magusch/Address_to_subway_name.git@master
+pytz==2025.1
+lxml==4.9.1

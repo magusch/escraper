@@ -20,7 +20,7 @@ def get_radario_date():
 ## radario get_event
 #######################################
 def test_radario_get_event():
-    with pytest.raises(NotImplementedError):
+    with pytest.raises(ValueError):
         Radario().get_event()
 
 
@@ -50,11 +50,12 @@ def test_radario_get_events(requests_get_events):
 
     assert event.adress == "test adress"
     assert event.category == "test category"
-    assert event.date_from == datetime.now(tz=Radario.TIMEZONE).replace(year=2021, month=1, day=1, hour=0, **ZEROS)
+    assert event.date_from == datetime.now(tz=Radario.TIMEZONE).replace(year=2023, month=12, day=31, hour=20, **ZEROS)
     assert event.date_to is None
     assert event.date_from_to == "01 января, 00:00"
     assert event.id == Radario.parser_prefix + "test id"
     assert event.place_name == "test place_name"
+    assert event.full_text == "test post_text"
     assert event.post_text == "test post_text"
     assert event.poster_imag == "test_image.png"
     assert event.price == "test price"

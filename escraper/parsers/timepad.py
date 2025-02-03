@@ -4,7 +4,6 @@ import itertools
 import re
 from pathlib import Path
 
-from find_metro.metro import get_subway_name as Subway
 import pytz
 
 from .base import BaseParser, ALL_EVENT_TAGS
@@ -62,7 +61,6 @@ class Timepad(BaseParser):
 
         self._token = token
         self.headers = dict(Authorization=f"Bearer {self._token}")
-        self.city_subway = Subway(city_id=2)  # 2 - Санкт петербург
 
     def get_event(self, event_id=None, event_url=None, tags=None):
         if event_url is not None:
@@ -184,11 +182,11 @@ class Timepad(BaseParser):
 
         else:
             if "address" not in event["location"]:
-                if event["location"]["city"] in ["Санкт-Петербург"]:
-                    address = "Санкт-Петербург"
-
-                elif event["location"]["city"] == "Без города":
+                if event["location"]["city"] == "Без города":
                     address = "Онлайн"
+
+                elif event["location"]["city"]:
+                    address = event["location"]["city"]
 
                 elif "coordinates" in event["location"]:
                     address = ", ".join(
@@ -202,9 +200,7 @@ class Timepad(BaseParser):
 
             else:
                 address = event["location"]["address"].strip()
-                metro_station = self.city_subway.get_subway(address)
-                if metro_station is not None:
-                    address = f"{address}, м.{metro_station}"
+
 
         return self.remove_html_tags(address)
 
@@ -236,6 +232,16 @@ class Timepad(BaseParser):
 
     def _place_name(self, event):
         return self.remove_html_tags(event["organization"]["name"]).strip()
+
+    def _full_text(self, event):
+        if event.get("description_html"):
+            full_text = self.remove_html_tags(event["description_html"])
+        elif event.get("description_short"):
+            full_text = self.remove_html_tags(event["description_short"])
+        else:
+            full_text = ""
+
+        return full_text
 
     def _post_text(self, event):
         post_text = ""
