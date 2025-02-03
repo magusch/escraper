@@ -3,6 +3,8 @@ from abc import ABC, abstractmethod
 from datetime import datetime
 from collections import namedtuple
 
+from json.decoder import JSONDecodeError
+
 import requests
 import pytz
 from bs4 import BeautifulSoup
@@ -29,7 +31,6 @@ class BaseParser(ABC):
     MAX_NUMBER_CONNECTION_ATTEMPTS = 3
     TIMEZONE = pytz.timezone("Europe/Moscow")
     TIMEZONE_zero = pytz.timezone("Europe/London")
-
 
     @abstractmethod
     def get_event(self):
@@ -129,8 +130,10 @@ class BaseParser(ABC):
                     if response.content:
                         try:
                             response_status = response.json()["response_status"]
-                        except:
-                            response_status = {"error_code": response.status_code, "message": response.reason}
+                        except JSONDecodeError:
+                            response_status = {"error_code": response.status_code, "message": "Invalid JSON response"}
+                        except Exception as e:
+                            response_status = {"error_code": response.status_code, "message": str(e)}
                     else:
                         response_status = dict(
                             error_code=response.status_code,
