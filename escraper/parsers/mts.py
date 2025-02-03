@@ -71,7 +71,7 @@ class MTS(BaseParser):
         if "city" in request_params:
             url = self.url + '/' + request_params['city']
         else:
-            url = self.url + '/'  + "sankt-peterburg"
+            url = self.url + '/' + "sankt-peterburg"
 
         if "date_from" in request_params:
             date_from = datetime.strptime(request_params["date_from"], '%Y-%m-%d')
