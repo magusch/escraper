@@ -15,6 +15,18 @@ ORG_IDS = (
     '5dce558174fd6b0bcaa66524', '5e3d551b44d20ecf697408e4', '5e3bec5fea9c82d6958f8551'
 )
 
+
+def extract_tc_event(event_soup):
+    """Return the inline `tc_event = {...};` JSON of a TC event page, or None."""
+    for script_tag in event_soup.find_all('script'):
+        if not script_tag.contents: continue
+        text = script_tag.contents[0]
+        if re.match('tc_event', text):
+            new_text = '='.join(text.strip().split('=')[1:])[:-1]
+            return json.loads(new_text)
+    return None
+
+
 class Ticketscloud(BaseParser):
     name = "Ticketscloud"
     BASE_URL = "https://ticketscloud.org/"
@@ -40,14 +52,9 @@ class Ticketscloud(BaseParser):
 
         tags = tags or ALL_EVENT_TAGS
 
-        script_tags = event_soup.find_all('script')
-        for script_tag in script_tags:
-            if not script_tag.contents: continue
-            text = script_tag.contents[0]
-            if re.match('tc_event', text):
-                new_text = '='.join(text.strip().split('=')[1:])[:-1]
-                self.tc_event = json.loads(new_text)
-                break
+        tc_event = extract_tc_event(event_soup)
+        if tc_event is not None:
+            self.tc_event = tc_event
         event = self.parse(event_soup, tags=tags)
 
         return event

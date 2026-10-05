@@ -12,6 +12,7 @@ from .yandex import Yandex
 from .config_scraper import ConfigScraper
 from .kassir import Kassir
 from .afisha import Afisha
+from .vibe import Vibe
 
 
 
@@ -28,4 +29,5 @@ all_parsers = dict(
     config=ConfigScraper,
     kassir=Kassir,
     afisha=Afisha,
+    vibe=Vibe,
 )
