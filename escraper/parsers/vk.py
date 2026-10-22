@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 import requests
 
 from .base import BaseParser, ALL_EVENT_TAGS
+from .utils import DEFAULT_CITY_NAME, require_city_name
 
 from ..emoji import add_emoji
 
@@ -30,18 +31,19 @@ class VK(BaseParser):
         else:
             raise ValueError("VK_ID was not found.")
         self.get_end_str = f'&access_token={token}&expires_in=86400&user_id={user_id}&v=5.103'
-        self.city = 'Санкт-Петербург'
 
     def get_token(self, client_id ):
         url = f"https://oauth.vk.com/authorize?client_id={client_id}&display=page&redirect_uri=http://vk.com/&scope=groups,wall&response_type=token&v=5.131&state=123456"
 
-    def get_event(self, event_id=None, event_url=None):
+    def get_event(self, event_id=None, event_url=None, city=None):
         """Get one event by url / event_id"""
         if event_url:
             event_id = event_url.split('/')[-1].split('?')[0]
         event_in_list = self.get_full_event(event_id)
         if event_in_list:
-            return self.parse(event_in_list[0], tags=ALL_EVENT_TAGS)
+            event = event_in_list[0]
+            event['_city'] = city or DEFAULT_CITY_NAME
+            return self.parse(event, tags=ALL_EVENT_TAGS)
 
     def get_events(self, request_params=None, existed_event_ids=None):
         """
@@ -56,6 +58,11 @@ class VK(BaseParser):
 
                     city_id : int, default 2
                         event city (2=>St.Petersburg)
+
+                    city : str, default 'Санкт-Петербург'
+                        city name or slug, used as address / place name for
+                        events without an address. Required with a city_id
+                        other than 2, and vice versa.
                 Examples:
                 ---------
                 >>> vk = VK()
@@ -75,11 +82,14 @@ class VK(BaseParser):
         else:
             days = 15
 
-        if 'city_id' in request_params:
-            self.city = request_params['city']
-            city_id = request_params['city_id']
-        else:
-            city_id = 2
+        city_id = int(request_params.get('city_id', 2))
+        city = require_city_name(request_params.get('city'), self.source)
+        # city_id drives the search, city only labels events: they must agree.
+        if (city_id == 2) != (city == DEFAULT_CITY_NAME):
+            raise ValueError(
+                f"{self.source}: set both 'city_id' and 'city' for a city other than "
+                f"{DEFAULT_CITY_NAME} (got city_id={city_id}, city={city!r})"
+            )
 
         event_data_general = []
         offset_count_query = 0
@@ -95,6 +105,7 @@ class VK(BaseParser):
         for event_ids_divided in divide_list(event_ids, 200):
             chunk = self.get_full_event(event_ids_divided)
             for event in self.check_events(chunk, days):
+                event['_city'] = city
                 yield self.parse(event, tags=ALL_EVENT_TAGS)
             time.sleep(0.5)
 
@@ -155,7 +166,7 @@ class VK(BaseParser):
                 event = self.add_address(event)
             address_id = event['addresses']['address']
             return address_id
-        return self.city
+        return event.get('_city', DEFAULT_CITY_NAME)
 
     def _category(self, event):
         return 'vk'
@@ -180,7 +191,7 @@ class VK(BaseParser):
             if "address" not in event['addresses']:
                 event = self.add_address(event)
             return event['addresses']['place_name']
-        return self.city
+        return event.get('_city', DEFAULT_CITY_NAME)
 
     def _full_text(self, event) -> str:
         post_text = event['description']

@@ -5,6 +5,7 @@ import time
 from datetime import datetime, timedelta
 
 from .base import BaseParser, ALL_EVENT_TAGS
+from .utils import require_city_name, strip_city
 from ..emoji import add_emoji
 
 logger = logging.getLogger(__name__)
@@ -85,10 +86,10 @@ class MTS(BaseParser):
         request_params = request_params or {}
         existed_event_ids = list(existed_event_ids) if existed_event_ids else []
 
-        if "city" in request_params:
-            url = self.url + '/' + request_params['city']
-        else:
-            url = self.url + '/' + "sankt-peterburg"
+        city = str(request_params.get("city") or "sankt-peterburg").strip().lower()
+        require_city_name(city, self.source)
+        url = self.url + '/' + city
+        city_checked = False
 
         if "date_from" in request_params:
             date_from = datetime.strptime(request_params["date_from"], '%Y-%m-%d')
@@ -113,9 +114,12 @@ class MTS(BaseParser):
             scrape_date = date_from
             while scrape_date <= date_to:
                 scrape_url = category_url + f"?date={scrape_date.date()}"
-                response = self._request_get(scrape_url)
+                response = self._request_get(scrape_url, return_on_status=(404,))
+                if not city_checked and response is not None and response.status_code == 404:
+                    raise ValueError(f"{self.source}: unknown city {city!r} ({scrape_url} is 404)")
                 if not response:
                     break
+                city_checked = True
 
                 json_body = self._extract_announcement_collection(response.text)
                 if json_body is None:
@@ -126,6 +130,11 @@ class MTS(BaseParser):
                 event_list_json = json_body.get("items") or []
 
                 for event_json in event_list_json:
+                    event_city = self._city_from_url(event_json['url'])
+                    if event_city and event_city != city:
+                        logger.warning("MTS: skipping %s — listed for %s, requested %s",
+                                       event_json['url'], event_city, city)
+                        continue
                     event_url = self.url + event_json['url']
                     event_id = self._id_from_url(event_url)
                     if event_id in existed_event_ids: continue
@@ -219,8 +228,7 @@ class MTS(BaseParser):
 
     def _adress(self, event_json):
         if 'address' in event_json["venue"] and event_json["venue"]['address'] is not None:
-            full_address = event_json["venue"]["address"].strip()
-            full_address = full_address.replace("г. Санкт-Петербург, ", "").replace("г Санкт-Петербург, ", "").replace("Санкт-Петербург, ", "")
+            full_address = strip_city(event_json["venue"]["address"], self._city_from_url(self.event_url))
         else:
             full_address = ''
 
@@ -249,6 +257,12 @@ class MTS(BaseParser):
 
     def _id(self, event_json):
         return self._id_from_url(self.event_url)
+
+    @staticmethod
+    def _city_from_url(event_url):
+        """City slug of an announcement URL: .../kazan/announcements/... → "kazan"."""
+        match = re.search(r"(?:^|live\.mts\.ru)/([^/?#]+)/announcements/", event_url or "")
+        return match.group(1) if match else None
 
     def _id_from_url(self, event_url):
         event_id = event_url.split('eventId=')[-1].split('&')[0].split('#')[0]

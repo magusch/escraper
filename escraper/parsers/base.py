@@ -169,8 +169,14 @@ class BaseParser(ABC):
 
         To avoid internet connection issues,
         will catch ConnectionError and retry.
+
+        ``return_on_status`` — HTTP statuses (e.g. ``(404,)``) returned to the
+        caller at once, without retries. The response is falsy (``not ok``), so
+        ``if not response`` checks keep working, but the caller can inspect
+        ``status_code`` to tell "not found" apart from a network failure.
         """
         attempts_count = 0
+        return_on_status = tuple(kwargs.pop("return_on_status", ()))
         if "timeout" not in kwargs:
             kwargs["timeout"] = self.DEFAULT_REQUEST_TIMEOUT
 
@@ -197,6 +203,9 @@ class BaseParser(ABC):
             try:
                 response = requests.get(*args, **kwargs)
                 self._last_request_time = time.monotonic()
+
+                if not response.ok and response.status_code in return_on_status:
+                    break
 
                 if not response.ok:
                     response_content = response.content

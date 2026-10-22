@@ -7,6 +7,7 @@ import pytz
 from bs4 import BeautifulSoup
 
 from .base import BaseParser, ALL_EVENT_TAGS
+from .utils import DEFAULT_CITY_NAME, require_city_name
 from ..emoji import add_emoji
 
 logger = logging.getLogger(__name__)
@@ -41,10 +42,11 @@ class Ticketscloud(BaseParser):
         self.TC_TOKEN = os.getenv('TC_TOKEN')
         self.TC_VIBE_REF = os.getenv('TC_VIBE_REF')
 
-    def get_event(self, event_url=None, tags=None):
+    def get_event(self, event_url=None, tags=None, city=None):
         if event_url is None:
             raise ValueError("'event_id' or 'event_url' required.")
         self.url = event_url
+        self.event_city = city or DEFAULT_CITY_NAME
 
         event_soup = BeautifulSoup(
             self._request_get(event_url).text, "lxml"
@@ -67,7 +69,7 @@ class Ticketscloud(BaseParser):
             org_ids : list
                 list of all organization for scraping
             city : str, default 'Санкт-Петербург'
-                city to filter events
+                city to filter events: Russian name or slug (spb, kazan, ...)
             days : int, default 10
                 max days ahead to include events
 
@@ -86,7 +88,7 @@ class Ticketscloud(BaseParser):
 
         org_ids = request_params.get("org_ids", ORG_IDS)
         days = int(request_params.get("days", 10))
-        self.city = request_params.get("city", "Санкт-Петербург")
+        city = require_city_name(request_params.get("city"), self.source)
 
         for org_id in org_ids:
             url = f"https://{org_id}.ticketscloud.org"
@@ -113,13 +115,13 @@ class Ticketscloud(BaseParser):
                 event_datetime_str = event_card.find(class_='ticketscloud-event-item__time')['datetime']
                 event_datetime = datetime.strptime(event_datetime_str, "%Y-%m-%d %H:%M:%S%z")
 
-                city = event_card.find('span', class_=None).text.strip()
+                event_city = event_card.find('span', class_=None).text.strip()
                 # Filter: keep only events in the requested city (if provided)
-                if (self.city and city.lower() != str(self.city).strip().lower()) or \
+                if (city and event_city.lower() != str(city).strip().lower()) or \
                         event_datetime > datetime.now().astimezone(self.TIMEZONE) + timedelta(days=days):
                     continue
 
-                event = self.get_event(event_url=self.url)
+                event = self.get_event(event_url=self.url, city=city)
                 existed_event_ids.append(event_id)
                 yield event
 
@@ -129,7 +131,7 @@ class Ticketscloud(BaseParser):
         if "онлайн" in full_address.lower():
             address = "Онлайн"
         else:
-            target_city = str(getattr(self, 'city', '') or '').strip()
+            target_city = str(getattr(self, 'event_city', '') or '').strip()
             if target_city and full_address.find(f", {target_city}") != -1:
                 end_idx = full_address.find(f", {target_city}")
                 address = full_address[:end_idx]
@@ -179,7 +181,7 @@ class Ticketscloud(BaseParser):
     def _place_name(self, event_soup):
         address_name = re.sub(r'\s+', ' ',
                               event_soup.find('div', class_='event-info-se__address-part').find('address').text.strip())
-        target_city = str(getattr(self, 'city', '') or '').strip()
+        target_city = str(getattr(self, 'event_city', '') or '').strip()
         if target_city:
             return re.sub(f'{re.escape(target_city)}, ', '', address_name)
         return address_name

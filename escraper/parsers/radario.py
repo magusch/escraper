@@ -3,6 +3,7 @@ import re
 from datetime import datetime, timedelta
 
 from .base import BaseParser, ALL_EVENT_TAGS
+from .utils import DEFAULT_CITY_NAME, strip_city
 from ..emoji import add_emoji
 
 logger = logging.getLogger(__name__)
@@ -12,6 +13,7 @@ class Radario(BaseParser):
     name = "radario"
     BASE_URL = "https://radario.ru/events/"
     BASE_EVENTS_API = "https://radario.ru/web-api/affiche/events"
+    CITIES_API = "https://radario.ru/web-api/affiche/cities"
     DATETIME_STRF = "%Y-%m-%dT%H:%M:%S.%f%z"
     source = "RADARIO"
 
@@ -31,8 +33,9 @@ class Radario(BaseParser):
         self.url = self.BASE_URL
         self.events_api = self.BASE_EVENTS_API
         self.timedelta_hours = self.timedelta_with_gmt0()
+        self._cities = None
 
-    def get_event(self, event_id=None, event_url=None, tags=None):
+    def get_event(self, event_id=None, event_url=None, tags=None, city_name=None):
         if event_id is None and event_url is not None:
             event_id = event_url.split('/')[-1]
         elif event_url is None and event_id is None :
@@ -45,6 +48,8 @@ class Radario(BaseParser):
             raise ValueError(f"Failed to fetch events. HTTP {response.status_code}: {response.text}")
 
         event_json_data = response.json()
+        if not event_json_data.get("cityName"):
+            event_json_data["cityName"] = city_name or DEFAULT_CITY_NAME
         event = self.parse(event_json_data, tags=tags or ALL_EVENT_TAGS)
 
         return event
@@ -55,6 +60,10 @@ class Radario(BaseParser):
         -----------
         request_params : dict
             Parameters for radario events
+
+            city : str or int, default "spb"
+                Radario city alias (spb, msk, kzn, ekb, ...), Russian name
+                or numeric cityId — see https://radario.ru/web-api/affiche/cities
 
             online : bool
                 Include online events
@@ -85,11 +94,7 @@ class Radario(BaseParser):
         request_params = (request_params or dict())
         existed_event_ids = list(existed_event_ids) if existed_event_ids else []
 
-        if "city" in request_params:
-            city_id = self.cities_to_id(request_params["city"])
-        else:
-            city_id = 1
-
+        city_id, city_name = self.resolve_city(request_params.get("city", "spb"))
 
         if request_params.pop("online", False):
             is_online = True
@@ -130,7 +135,8 @@ class Radario(BaseParser):
                         event_id = self._id(event_json)
                         if event_id in existed_event_ids: continue
 
-                        new_event = self.get_event(event_id=event_json['id'], tags=tags or ALL_EVENT_TAGS)
+                        new_event = self.get_event(event_id=event_json['id'], tags=tags or ALL_EVENT_TAGS,
+                                                   city_name=city_name)
 
                         existed_event_ids.append(new_event.id)
                         yield new_event
@@ -153,16 +159,13 @@ class Radario(BaseParser):
         if "онлайн" in full_address.lower():
             address = "Онлайн"
         else:
-            city_name = event_json_data["cityName"]
-            if city_name is None: city_name = 'Санкт-Петербург'
+            city_name = event_json_data.get("cityName") or DEFAULT_CITY_NAME
             if full_address.find(f", {city_name}") != -1:
                 end_idx = full_address.find(f", {city_name}")
                 address = full_address[:end_idx]
 
-            elif full_address.find(f"{city_name}, ") != -1:
-                address = full_address.replace(f"{city_name}, ", "")
             else:
-                address = full_address
+                address = strip_city(full_address, city_name)
 
         return address
 
@@ -235,7 +238,46 @@ class Radario(BaseParser):
         return categories_to_id[category]
 
     def cities_to_id(self, city):
-        cities_to_id = {
-            "spb": 1, "kzn": 85, "msk": 2,
-        }
-        return cities_to_id[city.lower()]
+        return self.resolve_city(city)[0]
+
+    BUILTIN_CITIES = [
+        {"id": 1, "alias": "spb", "name": "Санкт-Петербург"},
+        {"id": 2, "alias": "msk", "name": "Москва"},
+        {"id": 85, "alias": "kzn", "name": "Казань"},
+    ]
+
+    def resolve_city(self, city):
+        """Resolve a city alias / Russian name / cityId to ``(city_id, city_name)``.
+
+        Known cities resolve without a request; others are looked up in
+        radario's city directory (fetched once per parser instance).
+        Raises ValueError for an unknown city.
+        """
+        found = self._find_city(self.BUILTIN_CITIES, city)
+        if found:
+            return found
+
+        if self._cities is None:
+            response = self._request_get(self.CITIES_API)
+            try:
+                self._cities = response.json() if response else []
+            except ValueError:
+                self._cities = []
+            if not self._cities:
+                logger.warning("RADARIO: city directory unavailable at %s", self.CITIES_API)
+
+        found = self._find_city(self._cities, city)
+        if found:
+            return found
+        raise ValueError(f"RADARIO: unknown city {city!r}")
+
+    @staticmethod
+    def _find_city(cities, city):
+        key = str(city).strip().lower()
+        for item in cities:
+            if not isinstance(item, dict):
+                continue
+            if key in (str(item.get("id")), str(item.get("alias") or "").lower(),
+                       str(item.get("name") or "").lower()):
+                return item["id"], item["name"]
+        return None

@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 import pytz
 
 from .base import BaseParser, ALL_EVENT_TAGS
+from .utils import require_city_name, strip_city
 from ..emoji import add_emoji
 
 
@@ -94,6 +95,7 @@ class Kassir(BaseParser):
         event_data = {
             'activity': (activity_store or {}).get('activityState', {}),
             'venue': (venue_store or {}).get('venueState', {}),
+            'city': event_url.split('//')[-1].split('/')[0],
         }
 
         self.event_url = event_url
@@ -139,7 +141,8 @@ class Kassir(BaseParser):
         request_params = request_params or {}
         existed_event_ids = list(existed_event_ids) if existed_event_ids else []
 
-        city_domain = request_params.get('city_domain', 'spb.kassir.ru')
+        city_domain = request_params.get('city_domain') or 'spb.kassir.ru'
+        require_city_name(city_domain, self.source)
         categories = request_params.get('categories', self.DEFAULT_CATEGORIES)
 
         if 'date_from' in request_params:
@@ -189,6 +192,7 @@ class Kassir(BaseParser):
                     event_data = {
                         'activity': obj,
                         'venue': venue,
+                        'city': city_domain,
                     }
                     self.event_url = obj.get('url', '')
                     event = self.parse(event_data, tags=tags or ALL_EVENT_TAGS)
@@ -204,7 +208,7 @@ class Kassir(BaseParser):
     def _adress(self, event_data):
         addr = (event_data.get('venue') or {})
         addr = (addr.get('address') or {}).get('addressString', '') or ''
-        return addr.replace('Санкт-Петербург, ', '').strip()
+        return strip_city(addr, event_data.get('city'))
 
     def _category(self, event_data):
         cat = event_data['activity'].get('category') or {}

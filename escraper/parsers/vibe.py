@@ -9,6 +9,7 @@ from datetime import datetime
 from bs4 import BeautifulSoup
 
 from .base import BaseParser, ALL_EVENT_TAGS
+from .utils import require_city_name
 from .ticketscloud import extract_tc_event
 from ..emoji import add_emoji
 
@@ -68,7 +69,7 @@ class Vibe(BaseParser):
         self.TC_TOKEN = os.getenv('TC_TOKEN')
         self.TC_VIBE_REF = os.getenv('TC_VIBE_REF')
         self.partner = partner_from_token(self.TC_TOKEN)
-        self.city = CITY_NAMES["498817"]
+        self.city = CITY_NAMES["498817"]  # city of the event being parsed, set per event
         self.vibe_event = {}
         self.tc_event = None
 
@@ -127,7 +128,14 @@ class Vibe(BaseParser):
         self.partner = request_params.get("partner_subdomain", self.partner)
         self.enrich = request_params.get("enrich", True)
         max_pages = int(request_params.get("max_pages", 100))
-        self.city = request_params.get("city", CITY_NAMES.get(city_id, ""))
+        if request_params.get("city"):
+            city = require_city_name(request_params["city"], "VIBE")
+        elif city_id in CITY_NAMES:
+            city = CITY_NAMES[city_id]
+        else:
+            raise ValueError(f"VIBE: unknown city_id {city_id!r}; pass 'city' with its name")
+        if city_id in CITY_NAMES and CITY_NAMES[city_id] != city:
+            raise ValueError(f"VIBE: city {city!r} does not match city_id {city_id!r} ({CITY_NAMES[city_id]})")
 
         now = int(time.time())
         where = json.dumps({"city_id": city_id, "start": {"$between": [now, now + days * 86400]}})
@@ -159,12 +167,13 @@ class Vibe(BaseParser):
                     continue
                 existed_event_ids.add(event_id)
 
-                event = self._build_event(data, tags)
+                event = self._build_event(data, tags, city=city)
                 if event is not None:
                     yield event
 
-    def _build_event(self, data, tags):
+    def _build_event(self, data, tags, city=None):
         self.vibe_event = data
+        self.city = city or CITY_NAMES.get(str(data.get("city")), "")
         self.source = SYSTEM_SOURCES.get(data.get("system_"), data.get("system_") or "VIBE")
         self.tc_event = None
         if self.source == "TC" and getattr(self, "enrich", True) and self.partner:

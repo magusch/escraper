@@ -8,6 +8,7 @@ import pytz
 from bs4 import BeautifulSoup
 
 from .base import BaseParser, ALL_EVENT_TAGS
+from .utils import require_city_name, strip_city
 from ..emoji import add_emoji
 
 logger = logging.getLogger(__name__)
@@ -41,7 +42,6 @@ class QTickets(BaseParser):
 
     def __init__(self, use_proxy=True):
         super().__init__(use_proxy=use_proxy)
-        self.url = self.BASE_URL
         self.timedelta_hours = self.timedelta_with_gmt0()
 
     def get_event(self, event_url=None, tags=None):
@@ -88,8 +88,9 @@ class QTickets(BaseParser):
         request_params = request_params or {}
         existed_event_ids = list(existed_event_ids) if existed_event_ids else []
 
-        if "city" in request_params:
-            self.url = self.url.replace('spb', request_params['city'])
+        city = str(request_params.get("city") or "spb").strip().lower()
+        require_city_name(city, self.source)
+        base_url = self.BASE_URL.replace("spb", city)
 
         days = 10
         if "days" in request_params:
@@ -123,8 +124,10 @@ class QTickets(BaseParser):
         empty_streak = 0
         page = 1
         while page <= MAX_PAGES:
-            url = f"{self.url}/?page={str(page)}"
-            response = self._request_get(url)
+            url = f"{base_url}/?page={str(page)}"
+            response = self._request_get(url, return_on_status=(404,))
+            if page == 1 and response is not None and response.status_code == 404:
+                raise ValueError(f"{self.source}: unknown city {city!r} ({base_url} is 404)")
 
             list_event_from_soup = []
             if response:
@@ -169,10 +172,11 @@ class QTickets(BaseParser):
             "div", {"class": "address"}
         ).text.strip()
 
-        full_address = full_address.replace("Санкт-Петербург, ", "")
         full_address = full_address.replace("Россия", "")
 
-        return full_address
+        canonical = event_soup.find("link", {"rel": "canonical"})
+        city = self._city_from_url(canonical.get("href") if canonical else None)
+        return strip_city(full_address, city)
 
     def _category(self, event_soup):
         return None
@@ -242,6 +246,11 @@ class QTickets(BaseParser):
         else:
             event_id = f"{self.source}-{datetime.today().replace(' ', '_')}"
         return event_id
+
+    def _city_from_url(self, event_url):
+        """City subdomain of an event URL: https://kzn.qtickets.events/... → "kzn"."""
+        match = re.match(r"https?://([^./]+)\.qtickets\.events", event_url or "")
+        return match.group(1) if match else None
 
     def _id_from_url(self, event_url):
         event_site_id = event_url.split('/')[-1].split('-')[0]

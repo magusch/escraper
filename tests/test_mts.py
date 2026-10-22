@@ -4,6 +4,7 @@ from datetime import datetime
 from pathlib import Path
 
 from escraper.parsers import MTS
+from escraper.parsers.utils import CITY_NAMES
 
 from .testing import Response
 
@@ -91,6 +92,8 @@ def requests_get_events(monkeypatch):
 
     monkeypatch.setattr(requests, "get", get)
     monkeypatch.setattr(MTS, "BASE_URL", str(TESTDATA) )
+    # fixture pages live under test_data/test_mts/test_city/
+    monkeypatch.setitem(CITY_NAMES, "test_city", "Тестовый город")
 
 
 
