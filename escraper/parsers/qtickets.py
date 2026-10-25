@@ -217,7 +217,7 @@ class QTickets(BaseParser):
         if hour_from > self.timedelta_hours:
             hour_from = hour_from - self.timedelta_hours
 
-        self._date_from_ = datetime(year_now, month_from, int(day_from), hour_from, int(min_from)).astimezone(self.TIMEZONE)
+        self._date_from_ = self.TIMEZONE.localize(datetime(year_now, month_from, int(day_from), hour_from, int(min_from)))
 
         if not day_to:
             self._date_to_ = self._date_from_ + timedelta(hours=2)
@@ -226,7 +226,7 @@ class QTickets(BaseParser):
             hour_to = int(hour_to)
             if hour_to > self.timedelta_hours:
                 hour_to = hour_to - self.timedelta_hours
-            self._date_to_ = datetime(year_now, month_to, int(day_to), hour_to, int(min_to)).astimezone(self.TIMEZONE)
+            self._date_to_ = self.TIMEZONE.localize(datetime(year_now, month_to, int(day_to), hour_to, int(min_to)))
 
         return self._date_from_
 
