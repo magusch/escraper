@@ -214,8 +214,6 @@ class QTickets(BaseParser):
                 year_now = year_now - 1
 
         hour_from = int(hour_from)
-        if hour_from > self.timedelta_hours:
-            hour_from = hour_from - self.timedelta_hours
 
         self._date_from_ = self.TIMEZONE.localize(datetime(year_now, month_from, int(day_from), hour_from, int(min_from)))
 
@@ -224,8 +222,6 @@ class QTickets(BaseParser):
         else:
             if month_to < month_from: year_now = year_now + 1 #add logic for date_from in previous year
             hour_to = int(hour_to)
-            if hour_to > self.timedelta_hours:
-                hour_to = hour_to - self.timedelta_hours
             self._date_to_ = self.TIMEZONE.localize(datetime(year_now, month_to, int(day_to), hour_to, int(min_to)))
 
         return self._date_from_

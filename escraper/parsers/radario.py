@@ -172,14 +172,16 @@ class Radario(BaseParser):
     def _category(self, event_json_data):
         return event_json_data['superTagName'].strip()
 
+    def _local(self, value):
+        # Radario labels Moscow wall time as +00:00
+        return self.TIMEZONE.localize(datetime.strptime(value, self.DATETIME_STRF).replace(tzinfo=None))
+
     def _date_from(self, event_json_data):
-        self._date_from_ = datetime.strptime(event_json_data['beginDate'], self.DATETIME_STRF) - timedelta(hours=self.timedelta_hours)
-        self._date_from_ = self._date_from_.astimezone(self.TIMEZONE)
+        self._date_from_ = self._local(event_json_data['beginDate'])
         return self._date_from_
 
     def _date_to(self, event_json_data):
-        self._date_to_ = datetime.strptime(event_json_data['endDate'], self.DATETIME_STRF) - timedelta(hours=self.timedelta_hours)
-        self._date_to_ = self._date_to_.astimezone(self.TIMEZONE)
+        self._date_to_ = self._local(event_json_data['endDate'])
         return self._date_to_
 
     def _date_from_to(self, event_json_data):
