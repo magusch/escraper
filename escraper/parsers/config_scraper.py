@@ -240,6 +240,11 @@ class ConfigScraper(BaseParser):
         image = self._extract_field(
             card, config.get("card_image_selector"), config.get("card_image_attr")
         )
+        if config.get("card_image_attr") == "style":
+            if not config.get("card_image_selector"):
+                image = card.get("style")
+            match = re.search(r"url\(\s*['\"]?([^'\")]+)", image or "")
+            image = match.group(1).strip() if match else None
         # Fallback: try src if data-original is empty
         if not image:
             image = self._extract_field(

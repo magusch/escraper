@@ -429,7 +429,9 @@ def test_config_erarta_listing(monkeypatch):
     scraper = ConfigScraper()
     events = list(scraper.get_events(request_params={"site": "erarta"}))
 
+    # The .promoted news teaser (concert) is skipped
     assert len(events) == 2
+    assert all("news" not in e.url for e in events)
     event = events[0]
 
     assert event.title[2:] == "Нестор Хименес. Спектр синего шума"
@@ -446,6 +448,40 @@ def test_config_erarta_listing(monkeypatch):
     )
     # Description from the first .content block on the detail page
     assert "выставку мексиканского художника" in event.full_text
+
+
+def test_config_erarta_news_promoted_cards(monkeypatch):
+    def get(url, **kwargs):
+        if url.rstrip("/").endswith("exhibitions"):
+            filepath = TESTDATA / "listing_erarta.html"
+        else:
+            assert "/news/" in url
+            filepath = TESTDATA / "event_page_erarta_news.html"
+        with open(filepath) as f:
+            return Response(ok=True, text=f.read())
+
+    monkeypatch.setattr(requests, "get", get)
+
+    scraper = ConfigScraper()
+    events = list(scraper.get_events(request_params={"site": "erarta_news"}))
+
+    # Only the .promoted teaser — regular exhibition cards are left to "erarta"
+    assert len(events) == 1
+    event = events[0]
+    assert event.title[2:] == "НИИ ИИ"
+    assert event.id == "CFG-ERAR-news-301026"
+    assert event.url == "https://www.erarta.com/ru/museum/news/detail/news-301026/"
+    # Date + time from the card teaser "5 ноября, 20:00"
+    assert event.date_from.month == 11 and event.date_from.day == 5
+    assert (event.date_from.hour, event.date_from.minute) == (20, 0)
+    assert event.category == "концерты"
+    # Poster from the card's inline background-image style
+    assert event.poster_imag == (
+        "https://www.erarta.com/upload/resize_cache/iblock/b87/370_480_2/promo.jpg"
+    )
+    # Article body, not the news date block
+    assert event.full_text.startswith("Накануне открытия")
+    assert "сольный концерт" in event.full_text
 
 
 def test_config_philharmonia_listing(monkeypatch):

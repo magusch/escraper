@@ -115,7 +115,7 @@ SITES = {
         # concerts and other events, so default_category stays correct
         "listing_url": "/ru/calendar/exhibitions/",
         # --- listing selectors ---
-        "card_selector": "li.events__item",
+        "card_selector": "li.events__item:not(.promoted)",
         "card_title_selector": ".events__item-name",
         "card_date_selector": ".events__item-date",
         "card_image_selector": "img",
@@ -132,6 +132,28 @@ SITES = {
         "default_time": "11:00",
         # --- defaults ---
         "default_category": "выставки",
+        "default_address": "29-я линия В.О., 2",
+        "default_place": "Эрарта",
+    },
+    "erarta_news": {
+        # Promoted calendar cards (concerts, one-off events) — they link to a
+        # news article instead of an event page, so they are excluded from
+        # "erarta" and handled here. Run both configs to cover the calendar.
+        "name": "erarta_news",
+        "source": "ERAR",
+        "base_url": "https://www.erarta.com",
+        "listing_url": "/ru/calendar/exhibitions/",
+        "card_selector": "li.events__item.promoted",
+        "card_title_selector": ".events__item-name",
+        "card_date_selector": ".events__item-desc",
+        "card_image_selector": None,
+        "card_image_attr": "style",
+        "card_link_selector": "a.events__item-link",
+        "description_selector": ".content:has(p)",
+        "time_selector": None,
+        "price_selector": None,
+        "date_format": "russian",
+        "require_date": True,
         "default_address": "29-я линия В.О., 2",
         "default_place": "Эрарта",
     },
