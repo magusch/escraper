@@ -248,6 +248,32 @@ def test_parse_russian_date_with_time():
     assert time_str == "19:00"
 
 
+@pytest.mark.parametrize("text, d_from, d_to, time_str", [
+    # Leading labels are skipped
+    ("Акция | 3 ноября", (11, 3), None, None),
+    ("Вторник 03 ноября 13:00", (11, 3), None, "13:00"),
+    ("03 Ноября ВТ", (11, 3), None, None),
+    ("Выставка | 8 октября – 12 декабря", (10, 8), (12, 12), None),
+    # Day range inside one month
+    ("Практикум | 2-7 ноября", (11, 2), (11, 7), None),
+    ("14-15 ноября 11:00, 12:00", (11, 14), (11, 15), "11:00"),
+    # Spaced hyphen as a range separator
+    ("26 октября - 2 ноября", (10, 26), (11, 2), None),
+    # "до" means the end date
+    ("до 8 марта 2027 года", None, (3, 8), None),
+    ("Акция | по 31 декабря 2027 года", None, (12, 31), None),
+    # No day → no date
+    ("Акция", None, None, None),
+    ("Квест | 7+", None, None, None),
+    ("Июль — ноябрь", None, None, None),
+])
+def test_parse_russian_date_formats(text, d_from, d_to, time_str):
+    got_from, got_to, got_time = ConfigScraper._parse_date_range(text, "russian")
+    assert ((got_from.month, got_from.day) if got_from else None) == d_from
+    assert ((got_to.month, got_to.day) if got_to else None) == d_to
+    assert got_time == time_str
+
+
 #######################################
 ## default time and time from detail page
 #######################################
@@ -482,6 +508,96 @@ def test_config_erarta_news_promoted_cards(monkeypatch):
     # Article body, not the news date block
     assert event.full_text.startswith("Накануне открытия")
     assert "сольный концерт" in event.full_text
+
+
+def test_config_sites_grouped_by_city():
+    from escraper.parsers.configs import SITES_BY_CITY
+
+    assert set(SITES_BY_CITY["kazan"]) == {"tatfil", "tatmuseum"}
+    assert "erarta" in SITES_BY_CITY["spb"]
+    for city, sites in SITES_BY_CITY.items():
+        for name, cfg in sites.items():
+            assert cfg["city"] == city
+            assert SITES[name] is cfg
+
+
+def test_config_tatfil_listing(monkeypatch):
+    def get(url, **kwargs):
+        if url.rstrip("/").endswith("/poster"):
+            filepath = TESTDATA / "listing_tatfil.html"
+        elif "-2421" in url:
+            filepath = TESTDATA / "event_page_tatfil_2421.html"
+        else:
+            filepath = TESTDATA / "event_page_tatfil_2669.html"
+        with open(filepath) as f:
+            return Response(ok=True, text=f.read())
+
+    monkeypatch.setattr(requests, "get", get)
+
+    events = list(ConfigScraper().get_events(request_params={"site": "tatfil"}))
+    assert len(events) == 2
+    ballet, concert = events
+
+    assert ballet.title[2:] == "Балет «Лебединое озеро»"
+    assert ballet.id == "CFG-TFIL--2421"
+    assert ballet.url == "https://tatfil.ru/poster/balet/-2421/"
+    # Card "03 Ноября ВТ" + detail time "03 Ноября 19:00"
+    assert (ballet.date_from.month, ballet.date_from.day) == (11, 3)
+    assert (ballet.date_from.hour, ballet.date_from.minute) == (19, 0)
+    # Card label "Балет" → keyword detection
+    assert ballet.category == "театр"
+    assert ballet.price == "1500 - 2800₽"
+    assert ballet.place_name == "Татарская филармония им. Тукая"
+    assert ballet.adress == "ул. Павлюхина, 73"
+    assert ballet.poster_imag.startswith("https://tatfil.ru/upload/")
+    assert ballet.full_text.startswith("«Лебединое озеро» — мировой символ")
+    # Price/duration block is not part of the description
+    assert "СТОИМОСТЬ" not in ballet.full_text
+
+    assert concert.title[2:] == "ЗУР КОНЦЕРТ"
+    assert (concert.date_from.hour, concert.date_from.minute) == (18, 30)
+    # Label "Татарская вокальная музыка" has no keyword → title "КОНЦЕРТ"
+    assert concert.category == "концерты"
+    # Description spread over many <p> — all joined (description_all)
+    assert "Катнашалар" in concert.full_text
+    assert "МИРАС" in concert.full_text
+
+
+def test_config_tatmuseum_listing(monkeypatch):
+    def get(url, **kwargs):
+        if url.rstrip("/").endswith("/events"):
+            filepath = TESTDATA / "listing_tatmuseum.html"
+        else:
+            filepath = TESTDATA / "event_page_tatmuseum.html"
+        with open(filepath) as f:
+            return Response(ok=True, text=f.read())
+
+    monkeypatch.setattr(requests, "get", get)
+
+    events = list(ConfigScraper().get_events(request_params={"site": "tatmuseum"}))
+    by_title = {e.title[2:]: e for e in events}
+
+    # Undated "Акция" card is skipped (require_date)
+    assert len(events) == 3
+    assert set(by_title) == {"Ночь искусств", "Музыкальный код", "Путём киноплёнки"}
+
+    night = by_title["Ночь искусств"]
+    assert night.id == "CFG-NMRT-noch-iskusstv-2026"
+    assert (night.date_from.month, night.date_from.day) == (11, 3)
+    assert (night.date_from.hour, night.date_from.minute) == (10, 0)
+
+    code = by_title["Музыкальный код"]
+    assert (code.date_from.month, code.date_from.day) == (11, 2)
+    assert (code.date_to.month, code.date_to.day) == (11, 7)
+
+    film = by_title["Путём киноплёнки"]
+    assert (film.date_from.month, film.date_from.day) == (10, 8)
+    assert (film.date_to.month, film.date_to.day) == (12, 12)
+    # "Выставка | …" label wins over "кино" keywords in title/description
+    assert film.category == "выставки"
+    assert film.adress == "Кремлёвская ул., 2"
+    assert film.place_name == "Национальный музей Республики Татарстан"
+    assert "Графитовый зал" in film.full_text
 
 
 def test_config_philharmonia_listing(monkeypatch):

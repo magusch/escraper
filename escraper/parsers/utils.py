@@ -22,7 +22,7 @@ CATEGORY_KEYWORDS = {
     "кино": "кино",
     "фильм": "кино",
     "показ": "кино",
-    "лекция": "лекции",
+    "лекци": "лекции",  # лекция / лекции / лекций
     "лекторий": "лекции",
     "лектор": "лекции",
     "воркшоп": "мастер-классы",
@@ -56,11 +56,19 @@ def detect_category(title, text=""):
     Title is checked first (higher priority), then text.
     """
     for source in (title, text):
-        lower = source.lower()
+        lower = (source or "").lower()
         for keyword, category in CATEGORY_KEYWORDS.items():
-            if keyword in lower:
+            if len(keyword) <= SHORT_KEYWORD_LEN:
+                # Short keywords only as a whole word: "рок" must not hit
+                # "пророк" / "барокко", "бег" — "побережье"
+                if re.search(r"(?<!\w)" + re.escape(keyword) + r"(?!\w)", lower):
+                    return category
+            elif keyword in lower:
                 return category
     return ""
+
+
+SHORT_KEYWORD_LEN = 3
 
 
 DEFAULT_CITY_NAME = "Санкт-Петербург"

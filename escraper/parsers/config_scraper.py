@@ -72,27 +72,23 @@ class ConfigScraper(BaseParser):
         if not text:
             return None
         text = re.sub(r'\s+', ' ', text.strip())
-        match = re.match(r'(\d{1,2})\s+(\S+)(?:\s+(\d{4}))?', text)
-        if not match:
-            return None
+        for match in re.finditer(r'(?<!\d)(\d{1,2})\s+(\S+)(?:\s+(\d{4}))?', text):
+            month_str = match.group(2).lower().rstrip(',')
+            month = None
+            for prefix, num in MONTHS_RU.items():
+                if month_str.startswith(prefix):
+                    month = num
+                    break
+            if month is None:
+                continue
 
-        day = int(match.group(1))
-        month_str = match.group(2).lower().rstrip(',')
-        year = int(match.group(3)) if match.group(3) else datetime.now().year
-
-        month = None
-        for prefix, num in MONTHS_RU.items():
-            if month_str.startswith(prefix):
-                month = num
-                break
-
-        if month is None:
-            return None
-
-        try:
-            return datetime(year, month, day)
-        except ValueError:
-            return None
+            day = int(match.group(1))
+            year = int(match.group(3)) if match.group(3) else datetime.now().year
+            try:
+                return datetime(year, month, day)
+            except ValueError:
+                return None
+        return None
 
     @staticmethod
     def _parse_russian_date_range(text):
@@ -102,8 +98,11 @@ class ConfigScraper(BaseParser):
           '21 февраля, 19:00'
           'с 1 февраля по 28 февраля'
           '24 декабря – 15 февраля'
-          'по 6 марта'
+          'по 6 марта' / 'до 6 марта'
+          '2-7 ноября' (day range within one month)
+          '26 октября - 2 ноября' (spaced hyphen)
           '1 февраля'
+        Leading labels are skipped: 'Выставка | 8 октября – 12 декабря'.
         """
         if not text:
             return None, None, None
@@ -119,23 +118,32 @@ class ConfigScraper(BaseParser):
             text = (text[:time_match.start()] + text[time_match.end():]).strip()
             text = re.sub(r'\s+', ' ', text)
 
+        text = re.sub(r'^.*?(?=\b[сС]\s+\d|\b(?:по|до)\s+\d|\d)', '', text, count=1)
+
+        match = re.match(r'(\d{1,2})\s*[-–—]\s*(\d{1,2})\s+(\S+(?:\s+\d{4})?)', text)
+        if match:
+            d_to = ConfigScraper._parse_russian_date(f"{match.group(2)} {match.group(3)}")
+            if d_to:
+                d_from = d_to.replace(day=int(match.group(1))) if int(match.group(1)) <= d_to.day else None
+                return d_from, d_to, time_str
+
         # "с X по Y" pattern
-        match = re.match(r'с\s+(.+?)\s+по\s+(.+)', text)
+        match = re.match(r'[сС]\s+(.+?)\s+(?:по|до)\s+(.+)', text)
         if match:
             d_from = ConfigScraper._parse_russian_date(match.group(1))
             d_to = ConfigScraper._parse_russian_date(match.group(2))
             return d_from, d_to, time_str
 
         # "X – Y" pattern (dash-separated range)
-        parts = re.split(r'\s*[–—]\s*', text)
+        parts = re.split(r'\s+-\s+|\s*[–—]\s*', text)
         if len(parts) == 2:
             d_from = ConfigScraper._parse_russian_date(parts[0])
             d_to = ConfigScraper._parse_russian_date(parts[1])
             if d_from or d_to:
                 return d_from, d_to, time_str
 
-        # "по Y" only
-        match = re.match(r'по\s+(.+)', text)
+        # "по Y" / "до Y" only
+        match = re.match(r'(?:по|до)\s+(.+)', text)
         if match:
             d_to = ConfigScraper._parse_russian_date(match.group(1))
             return None, d_to, time_str
@@ -305,7 +313,13 @@ class ConfigScraper(BaseParser):
                         title = self._extract_field(soup, ".infopage_head_page")
                     data["title"] = title or ""
 
-                description = self._extract_field(soup, config.get("description_selector"))
+                desc_selector = config.get("description_selector")
+                if config.get("description_all") and desc_selector:
+                    # Description split over sibling blocks (<p>…</p><p>…</p>)
+                    parts = (el.get_text(" ", strip=True) for el in soup.select(desc_selector))
+                    description = "\n".join(p for p in parts if p)
+                else:
+                    description = self._extract_field(soup, desc_selector)
                 if description:
                     data["description"] = self.remove_html_tags(description)
                 else:
@@ -488,8 +502,11 @@ class ConfigScraper(BaseParser):
         return self._current_config.get("default_address", "")
 
     def _category(self, event_data):
-        if event_data.get("category"):
-            return event_data["category"]
+        category = event_data.get("category")
+        if category and self._current_config.get("card_category_detect"):
+            category = detect_category(category)
+        if category:
+            return category
         default = self._current_config.get("default_category")
         if default:
             return default

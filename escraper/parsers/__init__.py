@@ -15,6 +15,7 @@ from .afisha import Afisha
 from .vibe import Vibe
 from .tncloud import TNCloud
 
+from escraper.parsers.kazan.kremlin import KazanKremlin
 
 
 all_parsers = dict(
@@ -32,4 +33,5 @@ all_parsers = dict(
     afisha=Afisha,
     vibe=Vibe,
     tncloud=TNCloud,
+    kazan_kremlin=KazanKremlin,
 )
